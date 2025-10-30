@@ -1,0 +1,99 @@
+# Team Alpha DAG Configuration
+# This file defines DAGs for the Alpha team's data processing workflows
+
+team_alpha_etl_pipeline:
+  owner: 'team-alpha@company.com'
+  start_date: '2025-01-01'
+  schedule_interval: '@daily'
+  max_active_runs: 1
+  catchup: false
+  description: 'Daily ETL pipeline for Team Alpha data processing'
+  tags: ['etl', 'team-alpha', 'production', 'critical']
+  
+  default_args:
+    retries: 3
+    retry_delay_sec: 300
+    email_on_failure: true
+    email_on_retry: false
+    email: ['team-alpha@company.com', 'data-ops@company.com']
+  
+  tasks:
+    extract_source_data:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Starting data extraction for Team Alpha"
+        python /opt/team_alpha/scripts/extract_data.py --source=production_db
+      retries: 2
+      
+    validate_extracted_data:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Validating extracted data quality"
+        python /opt/team_alpha/scripts/validate_data.py --input=/tmp/extracted_data
+      dependencies: [extract_source_data]
+      
+    transform_data:
+      operator: airflow.operators.bash.BashOperator  
+      bash_command: |
+        echo "Transforming data according to Team Alpha business rules"
+        python /opt/team_alpha/scripts/transform_data.py --input=/tmp/extracted_data --output=/tmp/transformed_data
+      dependencies: [validate_extracted_data]
+      
+    load_to_warehouse:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Loading transformed data to data warehouse"
+        python /opt/team_alpha/scripts/load_data.py --input=/tmp/transformed_data --target=warehouse
+      dependencies: [transform_data]
+      
+    send_success_notification:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Pipeline completed successfully - sending notification"
+        curl -X POST "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK" \
+             -H 'Content-type: application/json' \
+             --data '{"text":"Team Alpha ETL pipeline completed successfully"}'
+      dependencies: [load_to_warehouse]
+
+team_alpha_data_quality_check:
+  owner: 'team-alpha@company.com'
+  start_date: '2025-01-01'
+  schedule_interval: '0 */6 * * *'  # Every 6 hours
+  max_active_runs: 1
+  catchup: false
+  description: 'Data quality monitoring for Team Alpha datasets'
+  tags: ['data-quality', 'team-alpha', 'monitoring']
+  
+  default_args:
+    retries: 1
+    retry_delay_sec: 600
+    email_on_failure: true
+    email: ['team-alpha@company.com']
+  
+  tasks:
+    check_data_freshness:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Checking data freshness for Team Alpha datasets"
+        python /opt/team_alpha/scripts/check_freshness.py --threshold_hours=8
+        
+    check_data_volume:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Checking data volume anomalies"
+        python /opt/team_alpha/scripts/check_volume.py --tolerance=0.2
+      dependencies: [check_data_freshness]
+      
+    check_data_schema:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Validating data schema compliance"
+        python /opt/team_alpha/scripts/check_schema.py --schema_version=v2.1
+      dependencies: [check_data_freshness]
+      
+    generate_quality_report:
+      operator: airflow.operators.bash.BashOperator
+      bash_command: |
+        echo "Generating data quality report"
+        python /opt/team_alpha/scripts/quality_report.py --output=/tmp/quality_report.html
+      dependencies: [check_data_volume, check_data_schema]
